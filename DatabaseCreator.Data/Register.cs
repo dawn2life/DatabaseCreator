@@ -13,7 +13,7 @@ namespace DatabaseCreator.Data
             hostBuilder.ConfigureServices((_, services) =>
             {
                 services.AddTransient<IConnection, Connection>();
-                services.AddTransient<IDatabsaeOperationRepository, DatabaseOperationRepository>();
+                services.AddTransient<IDatabaseOperationRepository, DatabaseOperationRepository>();
             });
         }
     }
