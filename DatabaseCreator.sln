@@ -11,6 +11,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DatabaseCreator.Domain", "D
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DatabaseCreator.Service", "DatabaseCreator.Service\DatabaseCreator.Service.csproj", "{AD0C1E45-EDE8-4F73-AFA2-3F99900DA4EA}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DatabaseCreator.Tests", "DatabaseCreator.Tests\DatabaseCreator.Tests.csproj", "{37C8442B-3695-4A94-A75A-DD562BCC96D5}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -33,6 +35,10 @@ Global
 		{AD0C1E45-EDE8-4F73-AFA2-3F99900DA4EA}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{AD0C1E45-EDE8-4F73-AFA2-3F99900DA4EA}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{AD0C1E45-EDE8-4F73-AFA2-3F99900DA4EA}.Release|Any CPU.Build.0 = Release|Any CPU
+		{37C8442B-3695-4A94-A75A-DD562BCC96D5}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{37C8442B-3695-4A94-A75A-DD562BCC96D5}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{37C8442B-3695-4A94-A75A-DD562BCC96D5}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{37C8442B-3695-4A94-A75A-DD562BCC96D5}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

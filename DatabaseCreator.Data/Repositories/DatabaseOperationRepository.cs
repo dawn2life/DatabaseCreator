@@ -3,23 +3,29 @@ using DatabaseCreator.Data.SqlConstants;
 using DatabaseCreator.Domain.Configurations;
 using DatabaseCreator.Domain.Models;
 using DatabaseCreator.Domain.Repositories;
+using DatabaseCreator.Domain.Exceptions;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using System.Data;
 
 namespace DatabaseCreator.Data.Repositories
 {
-    public class DatabaseOperationRepository : IDatabsaeOperationRepository
+    public class DatabaseOperationRepository : IDatabaseOperationRepository
     {
         private readonly IConnection _conn;
         private readonly ConnectionStrings _connStrings;
+        private readonly ILogger<DatabaseOperationRepository> _logger;
 
-        public DatabaseOperationRepository(IOptions<ConnectionStrings> connStrings, IConnection conn)
+        public DatabaseOperationRepository(IOptions<ConnectionStrings> connStrings,
+                                         IConnection conn,
+                                         ILogger<DatabaseOperationRepository> logger)
         {
             _conn = conn;
             _connStrings = connStrings.Value;
+            _logger = logger;
         }
 
-        public bool CreateDbWithSingleExecution(string dbName)
+        public void CreateDbWithSingleExecution(string dbName)
         {
             using var connection = _conn.GetSqlConnection(_connStrings.SqlDb.ConnectionString);
             using (IDbCommand command = connection.CreateCommand())
@@ -28,19 +34,17 @@ namespace DatabaseCreator.Data.Repositories
                 {
                     command.CommandText = DbSqlConstants.CreateDbQuery + dbName;
                     command.ExecuteNonQuery();
-                    Console.WriteLine($"Database '{dbName}' created successfully.");
+                    _logger.LogInformation("Database '{DbName}' created successfully.", dbName);
                 }
-                catch (Exception ex) 
+                catch (Exception ex)
                 {
-                    Console.WriteLine(ex.Message);
-                    return false;
+                    _logger.LogError(ex, "Error detail in repository for database {DbName} before throwing DatabaseOperationException.", dbName);
+                    throw new DatabaseOperationException("CreateDbWithSingleExecution", dbName, $"Failed to create database '{dbName}'.", ex);
                 }
             }
-
-            return true;    
         }
 
-        public bool CreateDbWithBatch(List<string> dbNames)
+        public void CreateDbWithBatch(List<string> dbNames)
         {
             int counter = 0;
             using var connection = _conn.GetSqlConnection(_connStrings.SqlDb.ConnectionString);
@@ -52,39 +56,42 @@ namespace DatabaseCreator.Data.Repositories
                     {
                         command.CommandText = DbSqlConstants.CreateDbQuery + dbName;
                         command.ExecuteNonQuery();
-                        Console.WriteLine($"Database '{dbName}' created successfully.");
+                        _logger.LogInformation("Database '{DbName}' created successfully in batch.", dbName);
                         counter++;
                     }
-                    return true;
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"Error creating databases: {ex.Message}");
-                    
-                    if (counter == 0) return false;
-
-                    for (int i = counter; i > 0; i--)
+                    _logger.LogError(ex, "Error during batch creation for {DbCount} databases. Attempting rollback for {Counter} databases if any were created.", dbNames.Count, counter);
+                    try
                     {
-                        command.CommandText = DbSqlConstants.DropDbQuery + dbNames[i - 1];
-                        command.ExecuteNonQuery();
-                        Console.WriteLine($"Database '{dbNames[i - 1]}' rolled back!");
+                        for (int i = counter; i > 0; i--) // Rollback only successfully created ones in this batch
+                        {
+                            command.CommandText = DbSqlConstants.DropDbQuery + dbNames[i - 1];
+                            command.ExecuteNonQuery();
+                            _logger.LogInformation("Database '{DbName}' rolled back!", dbNames[i - 1]);
+                        }
                     }
-                    return false;
+                    catch (Exception rollbackEx)
+                    {
+                        _logger.LogCritical(rollbackEx, "Critical error during rollback after partial batch failure. Original error message: {OriginalErrorMessage}", ex.Message);
+                        throw new DatabaseOperationException("CreateDbWithBatchRollback", $"Critical error during rollback after partial batch failure. Original error: {ex.Message}", rollbackEx);
+                    }
+                    throw new DatabaseOperationException("CreateDbWithBatch", $"Error during batch creation after {counter} successful operations (if any). Original error: {ex.Message}", ex);
                 }
             }
         }
 
-        public void AddCreatedDb(List<DbInfo> dbInfos) 
+        public void AddCreatedDb(List<DbInfo> dbInfos)
         {
             using var connection = _conn.GetSqlConnection(_connStrings.SqlDb.ConnectionString);
-            using (IDbCommand command = connection.CreateCommand()) 
+            using (IDbCommand command = connection.CreateCommand())
             {
-
-                Console.WriteLine("\nHistory for db operations: ");
+                _logger.LogInformation("Starting to add/update history for {DbInfoCount} db operations.", dbInfos.Count);
                 try
                 {
                     command.CommandText = DbSqlConstants.InsertDbInfo;
-                    foreach (var dbInfo in dbInfos) 
+                    foreach (var dbInfo in dbInfos)
                     {
                         IDataParameter dbNameParam = command.CreateParameter();
                         dbNameParam.ParameterName = "@DbName";
@@ -99,17 +106,57 @@ namespace DatabaseCreator.Data.Repositories
                         command.Parameters.Add(isCreatedParam);
 
                         var rowEffected = command.ExecuteNonQuery();
-                        if (rowEffected > 0) 
+                        if (rowEffected > 0)
                         {
-                            Console.WriteLine($"Inserted record for {dbInfo.DbName}");
+                            _logger.LogInformation("Inserted/Updated history record for {DbName}, IsCreated: {IsCreatedStatus}", dbInfo.DbName, dbInfo.IsCreated);
+                        }
+                        else
+                        {
+                            _logger.LogWarning("No rows affected when trying to insert/update history record for {DbName}", dbInfo.DbName);
                         }
                     }
-                    return;
                 }
-                catch (Exception ex) 
+                catch (Exception ex)
                 {
-                    Console.WriteLine($"Error inserting records: {ex.Message}");
-                    return;
+                    _logger.LogError(ex, "Error inserting history records for {DbInfoCount} operations.", dbInfos.Count);
+                    // Decide if this should throw or just log. For now, it logs and returns.
+                    // Consider if AddCreatedDb failure should propagate an exception.
+                }
+            }
+        }
+
+        public void ExecuteSqlScript(string databaseName, string scriptContent)
+        {
+            if (string.IsNullOrWhiteSpace(scriptContent))
+            {
+                _logger.LogWarning("ExecuteSqlScript was called with empty or whitespace script content for database {DatabaseName}. No operation will be performed.", databaseName);
+                return;
+            }
+
+            var builder = new System.Data.SqlClient.SqlConnectionStringBuilder(_connStrings.SqlDb.ConnectionString);
+            builder.InitialCatalog = databaseName;
+            string targetDbConnectionString = builder.ConnectionString;
+
+            _logger.LogInformation("Attempting to execute script against database {DatabaseName}.", databaseName);
+
+            using var connection = _conn.GetSqlConnection(targetDbConnectionString);
+            using (IDbCommand command = connection.CreateCommand())
+            {
+                try
+                {
+                    command.CommandText = scriptContent;
+                    command.ExecuteNonQuery();
+                    _logger.LogInformation("Successfully executed script against database {DatabaseName}.", databaseName);
+                }
+                catch (System.Data.SqlClient.SqlException ex) // More specific exception
+                {
+                    _logger.LogError(ex, "SQL error executing script against database {DatabaseName}.", databaseName);
+                    throw new DatabaseOperationException("ExecuteSqlScript", databaseName, $"SQL error executing script against database '{databaseName}'. Error: {ex.Message}", ex);
+                }
+                catch (Exception ex) // Catch-all for other errors
+                {
+                    _logger.LogError(ex, "Generic error executing script against database {DatabaseName}.", databaseName);
+                    throw new DatabaseOperationException("ExecuteSqlScript", databaseName, $"Generic error executing script against database '{databaseName}'. Error: {ex.Message}", ex);
                 }
             }
         }
