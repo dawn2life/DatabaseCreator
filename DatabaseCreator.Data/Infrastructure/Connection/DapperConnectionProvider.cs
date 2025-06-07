@@ -1,5 +1,5 @@
 using System.Data;
-using System.Data.SqlClient; // Or the generic System.Data.Common for broader compatibility if needed
+using Microsoft.Data.SqlClient; // Changed from System.Data.SqlClient
 
 namespace DatabaseCreator.Data.Infrastructure.Connection
 {

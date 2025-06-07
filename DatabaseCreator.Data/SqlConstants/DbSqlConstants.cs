@@ -1,13 +1,13 @@
 ﻿namespace DatabaseCreator.Data.SqlConstants
 {
-    internal class DbSqlConstants
+    public class DbSqlConstants // Changed to public
     {
-        internal const string CreateDbQuery = "CREATE DATABASE ";
+        public const string CreateDatabaseQuery = "CREATE DATABASE {0}"; // Renamed and made public, added placeholder
 
-        internal const string DropDbQuery = "DROP DATABASE ";
+        public const string DropDbQuery = "DROP DATABASE {0}"; // Made public, added placeholder
 
-        internal const string InsertDbInfo = @"INSERT INTO DbInfo (DbName ,IsCreated)
-                                                           VALUES (@DbName, @IsCreated)";
+        public const string InsertDbInfo = @"INSERT INTO DbInfo (DbName ,IsCreated)
+                                                           VALUES (@DbName, @IsCreated)"; // Made public
                                                              
     }
 }

@@ -5,8 +5,6 @@ using DatabaseCreator.Domain.Repositories;
 using DatabaseCreator.Domain.Services;
 using DatabaseCreator.Domain.Exceptions;
 using Microsoft.Extensions.Logging;
-using Microsoft.IdentityModel.Protocols.WSIdentity;
-using System.Xml.Linq;
 using System.IO; // Added for File.ReadAllText
 
 namespace DatabaseCreator.Service.CommonService

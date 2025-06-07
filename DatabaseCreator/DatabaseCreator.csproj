@@ -16,12 +16,19 @@
     <PackageReference Include="Serilog.Extensions.Hosting" Version="9.0.0" />
     <PackageReference Include="Serilog.Sinks.Console" Version="6.0.0" />
     <PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
+    <PackageReference Include="Serilog.Settings.Configuration" Version="8.0.0" /> <!-- Check for latest version -->
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\DatabaseCreator.Domain\DatabaseCreator.Domain.csproj" />
     <ProjectReference Include="..\DatabaseCreator.Service\DatabaseCreator.Service.csproj" />
     <ProjectReference Include="..\DatabaseCreator.Data.EfCore\DatabaseCreator.Data.EfCore.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="connectionstring.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 
 </Project>

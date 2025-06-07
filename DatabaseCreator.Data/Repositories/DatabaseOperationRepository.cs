@@ -9,7 +9,7 @@ using Microsoft.Extensions.Options;
 using System;
 using System.Collections.Generic;
 using System.Data;
-using System.Data.SqlClient;
+using Microsoft.Data.SqlClient; // Changed
 using System.Linq;
 using System.Text;
 using DatabaseCreator.Data.SqlConstants;
@@ -29,7 +29,7 @@ namespace DatabaseCreator.Data.Repositories
             IDatabaseConnectionFactory connectionFactory,
             ILogger<DatabaseOperationRepository> logger)
         {
-            _masterConnectionString = connectionStrings.Value.MasterConnection ?? throw new ArgumentNullException(nameof(connectionStrings.Value.MasterConnection));
+               _masterConnectionString = connectionStrings.Value?.SqlDb?.ConnectionString ?? throw new InvalidOperationException("MasterConnection (SqlDb.ConnectionString) is not configured correctly in connectionstring.json or the ConnectionStrings section is missing.");
             _connectionFactory = connectionFactory ?? throw new ArgumentNullException(nameof(connectionFactory));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         }
@@ -65,7 +65,7 @@ namespace DatabaseCreator.Data.Repositories
             {
                 throw new ArgumentException("Database name cannot be null or whitespace.", nameof(dbName));
             }
-            var builder = new SqlConnectionStringBuilder(_masterConnectionString);
+               var builder = new Microsoft.Data.SqlClient.SqlConnectionStringBuilder(_masterConnectionString); // Fully qualified
             builder.InitialCatalog = dbName;
             string targetDbConnectionString = builder.ConnectionString;
             return provider.GetDbConnection(targetDbConnectionString);
