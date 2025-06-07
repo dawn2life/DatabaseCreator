@@ -46,25 +46,30 @@ try
     {
         services.Configure<ConnectionStrings>(hostContext.Configuration.GetSection(nameof(ConnectionStrings)));
         services.AddSingleton<App>();
-        services.AddAutoMapper(Register.GetAutoMapperProfiles());
+
+        // Configure services from the Service layer (and by extension, Data layer)
+        services.ConfigureServiceLayer(hostContext.Configuration);
+
+        services.AddAutoMapper(cfg => cfg.AddProfiles(Register.GetAutoMapperProfiles()));
 
         services.AddDbContext<ApplicationDbContext>((serviceProvider, options) =>
         {
-            var connectionStrings = serviceProvider.GetRequiredService<IOptions<ConnectionStrings>>().Value;
-            if (string.IsNullOrWhiteSpace(connectionStrings.MasterConnection))
+            var connectionStringsOpt = serviceProvider.GetRequiredService<IOptions<ConnectionStrings>>().Value; // Renamed for clarity
+            string? masterConnectionString = connectionStringsOpt?.SqlDb?.ConnectionString;
+            if (string.IsNullOrWhiteSpace(masterConnectionString))
             {
-                throw new InvalidOperationException("MasterConnection string is not configured correctly in connectionstring.json.");
+                throw new InvalidOperationException("MasterConnection (SqlDb.ConnectionString) is not configured correctly in connectionstring.json or the ConnectionStrings:SqlDb section is missing.");
             }
-            options.UseSqlServer(connectionStrings.MasterConnection, sqlServerOptionsAction: sqlOptions =>
+            options.UseSqlServer(masterConnectionString, sqlServerOptionsAction: sqlOptions =>
             {
                 // Example: sqlOptions.EnableRetryOnFailure();
             });
         });
     });
 
-    Register.ConfigureServiceLayer(hostBuilder);
+    // Register.ConfigureServiceLayer(hostBuilder); // This line is now removed.
     // Assuming Data layer DI might be part of ConfigureServiceLayer or needs similar registration if separate
-    // Example: Register.ConfigureDataLayer(hostBuilder);
+    // Example: Register.ConfigureDataLayer(hostBuilder); // This would also need to be inside if it's IServiceCollection extension
 
     using IHost host = hostBuilder.Build();
     var services = host.Services;

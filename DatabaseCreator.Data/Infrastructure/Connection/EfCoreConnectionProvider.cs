@@ -1,5 +1,5 @@
 using System.Data;
-using System.Data.SqlClient;
+using Microsoft.Data.SqlClient; // Changed
 
 namespace DatabaseCreator.Data.Infrastructure.Connection
 {

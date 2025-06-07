@@ -4,6 +4,8 @@ namespace DatabaseCreator.Domain.Repositories
 {
     public interface IDatabaseOperationRepository
     {
+        void SetConnectionMethod(string methodName); // Added this line
+
         /// <summary>
         /// This method creates a database.
         /// </summary>

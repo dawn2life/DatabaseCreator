@@ -1,0 +1,9 @@
+{
+  "ConnectionStrings": {
+    "SqlDb": {
+      "Name": "MasterConnection",
+      "ConnectionString": "Server=(localdb)\\mssqllocaldb;Database=master;Trusted_Connection=True;TrustServerCertificate=True;",
+      "ProviderName": "System.Data.SqlClient"
+    }
+  }
+}
