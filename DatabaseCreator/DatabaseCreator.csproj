@@ -21,6 +21,7 @@
   <ItemGroup>
     <ProjectReference Include="..\DatabaseCreator.Domain\DatabaseCreator.Domain.csproj" />
     <ProjectReference Include="..\DatabaseCreator.Service\DatabaseCreator.Service.csproj" />
+    <ProjectReference Include="..\DatabaseCreator.Data.EfCore\DatabaseCreator.Data.EfCore.csproj" />
   </ItemGroup>
 
 </Project>

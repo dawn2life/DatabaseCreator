@@ -59,24 +59,26 @@ namespace DatabaseCreator.Tests
             var expectedCreatedDbs = databaseNames.Select(name => new DbInfo { DbName = name, IsCreated = true }).ToList();
 
             _databaseOperationRepositoryMock.Setup(repo => repo.CreateDbWithSingleExecution(It.IsAny<string>()));
-            _databaseOperationRepositoryMock.Setup(repo => repo.AddCreatedDb(It.IsAny<List<DbInfo>>()));
+            _databaseOperationRepositoryMock.Setup(repo => repo.LogCreatedDbInfo(It.IsAny<List<DbInfo>>()));
             _mapperMock.Setup(m => m.Map<List<DbInfo>>(It.IsAny<List<DbInfodto>>()))
                        .Returns((List<DbInfodto> dtos) => dtos.Select(dto => new DbInfo { DbName = dto.DbName, IsCreated = dto.IsCreated }).ToList());
 
             var result = _databaseOperationService.SingleExecution(databaseNames, null);
 
             Assert.NotNull(result);
-            Assert.Equal(expectedCreatedDbs.Count, result.Count);
-            for (int i = 0; i < expectedCreatedDbs.Count; i++)
+            Assert.True(result.Success);
+            Assert.Equal(databaseNames.Count, result.CreatedDatabaseNames.Count);
+            foreach (var name in databaseNames)
             {
-                Assert.Equal(expectedCreatedDbs[i].DbName, result[i]);
+                Assert.Contains(name, result.CreatedDatabaseNames);
             }
+            Assert.Contains($"{databaseNames.Count} created, 0 failed", result.SummaryMessage);
 
             foreach (var name in databaseNames)
             {
                 _databaseOperationRepositoryMock.Verify(repo => repo.CreateDbWithSingleExecution(name), Times.Once);
             }
-            _databaseOperationRepositoryMock.Verify(repo => repo.AddCreatedDb(It.Is<List<DbInfo>>(list => list.Count == databaseNames.Count)), Times.Once);
+            _databaseOperationRepositoryMock.Verify(repo => repo.LogCreatedDbInfo(It.Is<List<DbInfo>>(list => list.Count == databaseNames.Count)), Times.Once);
         }
 
         [Fact]
@@ -89,24 +91,28 @@ namespace DatabaseCreator.Tests
             _databaseOperationRepositoryMock.Setup(repo => repo.CreateDbWithSingleExecution("fail_db"))
                                            .Throws(new DatabaseOperationException("CreateDbWithSingleExecution", "fail_db", "Mocked failure for fail_db", new Exception()));
             _databaseOperationRepositoryMock.Setup(repo => repo.CreateDbWithSingleExecution("db2"));
-            _databaseOperationRepositoryMock.Setup(repo => repo.AddCreatedDb(It.IsAny<List<DbInfo>>()));
+            _databaseOperationRepositoryMock.Setup(repo => repo.LogCreatedDbInfo(It.IsAny<List<DbInfo>>()));
             _mapperMock.Setup(m => m.Map<List<DbInfo>>(It.IsAny<List<DbInfodto>>()))
                        .Returns((List<DbInfodto> dtos) => dtos.Select(dto => new DbInfo { DbName = dto.DbName, IsCreated = dto.IsCreated }).ToList());
 
             var result = _databaseOperationService.SingleExecution(databaseNames, null);
 
             Assert.NotNull(result);
-            Assert.Equal(successfullyCreatedNames.Count, result.Count);
-            for (int i = 0; i < successfullyCreatedNames.Count; i++)
+            Assert.True(result.Success); // Success is true because at least one DB was created
+            Assert.Equal(successfullyCreatedNames.Count, result.CreatedDatabaseNames.Count);
+            foreach (var name in successfullyCreatedNames)
             {
-                Assert.Equal(successfullyCreatedNames[i], result[i]);
+                Assert.Contains(name, result.CreatedDatabaseNames);
             }
+            Assert.DoesNotContain("fail_db", result.CreatedDatabaseNames);
+            Assert.Contains($"{successfullyCreatedNames.Count} created", result.SummaryMessage);
+            Assert.Contains("1 failed", result.SummaryMessage); // Assuming 1 failure
 
             foreach (var name in databaseNames)
             {
                 _databaseOperationRepositoryMock.Verify(repo => repo.CreateDbWithSingleExecution(name), Times.Once);
             }
-            _databaseOperationRepositoryMock.Verify(repo => repo.AddCreatedDb(It.Is<List<DbInfo>>(list =>
+            _databaseOperationRepositoryMock.Verify(repo => repo.LogCreatedDbInfo(It.Is<List<DbInfo>>(list =>
                 list.Count == databaseNames.Count &&
                 list.First(db => db.DbName == "db1").IsCreated == true &&
                 list.First(db => db.DbName == "fail_db").IsCreated == false &&
@@ -119,9 +125,11 @@ namespace DatabaseCreator.Tests
         {
             List<string>? databaseNames = null;
             var result = _databaseOperationService.SingleExecution(databaseNames, null);
-            Assert.Null(result);
+            Assert.NotNull(result); // Updated based on new return type
+            Assert.False(result.Success); // Updated
+            Assert.Equal("Input database names list was null.", result.SummaryMessage); // Updated
             _databaseOperationRepositoryMock.Verify(repo => repo.CreateDbWithSingleExecution(It.IsAny<string>()), Times.Never);
-            _databaseOperationRepositoryMock.Verify(repo => repo.AddCreatedDb(It.IsAny<List<DbInfo>>()), Times.Never);
+            _databaseOperationRepositoryMock.Verify(repo => repo.LogCreatedDbInfo(It.IsAny<List<DbInfo>>()), Times.Never);
         }
 
         [Fact]
@@ -130,9 +138,11 @@ namespace DatabaseCreator.Tests
             var databaseNames = new List<string>();
             var result = _databaseOperationService.SingleExecution(databaseNames, null);
             Assert.NotNull(result);
-            Assert.Empty(result);
+            Assert.True(result.Success); // Updated
+            Assert.Empty(result.CreatedDatabaseNames); // Updated
+            Assert.Equal("No databases requested for creation.", result.SummaryMessage); // Updated
             _databaseOperationRepositoryMock.Verify(repo => repo.CreateDbWithSingleExecution(It.IsAny<string>()), Times.Never);
-            _databaseOperationRepositoryMock.Verify(repo => repo.AddCreatedDb(It.IsAny<List<DbInfo>>()), Times.Never);
+            _databaseOperationRepositoryMock.Verify(repo => repo.LogCreatedDbInfo(It.IsAny<List<DbInfo>>()), Times.Never);
         }
 
         [Fact]
@@ -144,15 +154,17 @@ namespace DatabaseCreator.Tests
             _databaseOperationRepositoryMock.Setup(repo => repo.CreateDbWithBatch(databaseNames));
             _mapperMock.Setup(m => m.Map<List<DbInfo>>(It.IsAny<List<DbInfodto>>()))
                        .Returns((List<DbInfodto> dtos) => dtos.Select(dto => new DbInfo { DbName = dto.DbName, IsCreated = dto.IsCreated }).ToList());
-            _databaseOperationRepositoryMock.Setup(repo => repo.AddCreatedDb(It.IsAny<List<DbInfo>>()));
+            _databaseOperationRepositoryMock.Setup(repo => repo.LogCreatedDbInfo(It.IsAny<List<DbInfo>>()));
 
             var result = _databaseOperationService.Batch(databaseNames, null);
 
             Assert.NotNull(result);
-            Assert.Equal(databaseNames.Count, result.Count);
-            Assert.Equal(databaseNames, result);
+            Assert.True(result.Success);
+            Assert.Equal(databaseNames.Count, result.CreatedDatabaseNames.Count);
+            Assert.Equal(databaseNames, result.CreatedDatabaseNames);
+            Assert.Contains($"{databaseNames.Count} created, 0 failed", result.SummaryMessage);
             _databaseOperationRepositoryMock.Verify(repo => repo.CreateDbWithBatch(databaseNames), Times.Once);
-            _databaseOperationRepositoryMock.Verify(repo => repo.AddCreatedDb(It.Is<List<DbInfo>>(list =>
+            _databaseOperationRepositoryMock.Verify(repo => repo.LogCreatedDbInfo(It.Is<List<DbInfo>>(list =>
                 list.Count == expectedDbInfos.Count &&
                 list.All(actual => expectedDbInfos.Any(expected => actual.DbName == expected.DbName && actual.IsCreated == expected.IsCreated))
             )), Times.Once);
@@ -167,14 +179,17 @@ namespace DatabaseCreator.Tests
 
             _mapperMock.Setup(m => m.Map<List<DbInfo>>(It.IsAny<List<DbInfodto>>()))
                        .Returns((List<DbInfodto> dtos) => dtos.Select(dto => new DbInfo { DbName = dto.DbName, IsCreated = dto.IsCreated }).ToList());
-            _databaseOperationRepositoryMock.Setup(repo => repo.AddCreatedDb(It.IsAny<List<DbInfo>>()));
+            _databaseOperationRepositoryMock.Setup(repo => repo.LogCreatedDbInfo(It.IsAny<List<DbInfo>>()));
 
             var result = _databaseOperationService.Batch(databaseNames, null);
 
             Assert.NotNull(result);
-            Assert.Empty(result);
+            Assert.False(result.Success);
+            Assert.Empty(result.CreatedDatabaseNames);
+            Assert.Contains("0 created", result.SummaryMessage);
+            Assert.Contains($"{databaseNames.Count} failed", result.SummaryMessage);
             _databaseOperationRepositoryMock.Verify(repo => repo.CreateDbWithBatch(databaseNames), Times.Once);
-            _databaseOperationRepositoryMock.Verify(repo => repo.AddCreatedDb(It.Is<List<DbInfo>>(list =>
+            _databaseOperationRepositoryMock.Verify(repo => repo.LogCreatedDbInfo(It.Is<List<DbInfo>>(list =>
                 list.Count == databaseNames.Count &&
                 list.All(dbInfo => !dbInfo.IsCreated)
             )), Times.Once);
@@ -185,9 +200,11 @@ namespace DatabaseCreator.Tests
         {
             List<string>? databaseNames = null;
             var result = _databaseOperationService.Batch(databaseNames, null);
-            Assert.Null(result);
+            Assert.NotNull(result); // Updated
+            Assert.False(result.Success); // Updated
+            Assert.Equal("Input database names list was null.", result.SummaryMessage); // Updated
             _databaseOperationRepositoryMock.Verify(repo => repo.CreateDbWithBatch(It.IsAny<List<string>>()), Times.Never);
-            _databaseOperationRepositoryMock.Verify(repo => repo.AddCreatedDb(It.IsAny<List<DbInfo>>()), Times.Never);
+            _databaseOperationRepositoryMock.Verify(repo => repo.LogCreatedDbInfo(It.IsAny<List<DbInfo>>()), Times.Never);
         }
 
         [Fact]
@@ -196,9 +213,11 @@ namespace DatabaseCreator.Tests
             var databaseNames = new List<string>();
             var result = _databaseOperationService.Batch(databaseNames, null);
             Assert.NotNull(result);
-            Assert.Empty(result);
+            Assert.True(result.Success); // Updated
+            Assert.Empty(result.CreatedDatabaseNames); // Updated
+            Assert.Equal("No databases requested for creation in batch.", result.SummaryMessage); // Updated
             _databaseOperationRepositoryMock.Verify(repo => repo.CreateDbWithBatch(It.IsAny<List<string>>()), Times.Never);
-            _databaseOperationRepositoryMock.Verify(repo => repo.AddCreatedDb(It.IsAny<List<DbInfo>>()), Times.Never);
+            _databaseOperationRepositoryMock.Verify(repo => repo.LogCreatedDbInfo(It.IsAny<List<DbInfo>>()), Times.Never);
         }
 
         // --- Tests for SingleExecution with SQL Script ---
@@ -220,10 +239,12 @@ namespace DatabaseCreator.Tests
                 var result = _databaseOperationService.SingleExecution(new List<string> { dbName }, tempScriptPath);
 
                 Assert.NotNull(result);
-                Assert.Contains(dbName, result);
+                Assert.True(result.Success);
+                Assert.Contains(dbName, result.CreatedDatabaseNames);
+                Assert.Contains("1 created, 0 failed", result.SummaryMessage);
                 _databaseOperationRepositoryMock.Verify(repo => repo.CreateDbWithSingleExecution(dbName), Times.Once);
                 _databaseOperationRepositoryMock.Verify(repo => repo.ExecuteSqlScript(dbName, scriptContent), Times.Once);
-                _databaseOperationRepositoryMock.Verify(repo => repo.AddCreatedDb(It.Is<List<DbInfo>>(list => list.Any(di => di.DbName == dbName && di.IsCreated))), Times.Once);
+                _databaseOperationRepositoryMock.Verify(repo => repo.LogCreatedDbInfo(It.Is<List<DbInfo>>(list => list.Any(di => di.DbName == dbName && di.IsCreated))), Times.Once);
             }
             finally
             {
@@ -244,7 +265,9 @@ namespace DatabaseCreator.Tests
             var result = _databaseOperationService.SingleExecution(new List<string> { dbName }, nonExistentScriptPath);
 
             Assert.NotNull(result);
-            Assert.Contains(dbName, result);
+            Assert.True(result.Success);
+            Assert.Contains(dbName, result.CreatedDatabaseNames);
+            Assert.Contains("1 created, 0 failed", result.SummaryMessage); // DB created, script error is separate
             _databaseOperationRepositoryMock.Verify(repo => repo.CreateDbWithSingleExecution(dbName), Times.Once);
             _databaseOperationRepositoryMock.Verify(repo => repo.ExecuteSqlScript(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
 
@@ -253,10 +276,10 @@ namespace DatabaseCreator.Tests
                     LogLevel.Error,
                     It.IsAny<EventId>(),
                     It.Is<It.IsAnyType>((v, t) => v.ToString().Contains("Error reading SQL script file")),
-                    It.IsAny<System.IO.FileNotFoundException>(),
+                    It.IsAny<System.IO.FileNotFoundException>(), // Specific exception type
                     It.IsAny<Func<It.IsAnyType, Exception, string>>()),
                 Times.Once);
-             _databaseOperationRepositoryMock.Verify(repo => repo.AddCreatedDb(It.Is<List<DbInfo>>(list => list.Any(di => di.DbName == dbName && di.IsCreated))), Times.Once);
+             _databaseOperationRepositoryMock.Verify(repo => repo.LogCreatedDbInfo(It.Is<List<DbInfo>>(list => list.Any(di => di.DbName == dbName && di.IsCreated))), Times.Once);
         }
 
         [Fact]
@@ -277,7 +300,9 @@ namespace DatabaseCreator.Tests
                 var result = _databaseOperationService.SingleExecution(new List<string> { dbName }, tempScriptPath);
 
                 Assert.NotNull(result);
-                Assert.Contains(dbName, result);
+            Assert.True(result.Success);
+                Assert.Contains(dbName, result.CreatedDatabaseNames);
+            Assert.Contains("1 created, 0 failed", result.SummaryMessage); // DB created, script execution failed but is part of the operation on a created DB
                 _databaseOperationRepositoryMock.Verify(repo => repo.CreateDbWithSingleExecution(dbName), Times.Once);
                 _databaseOperationRepositoryMock.Verify(repo => repo.ExecuteSqlScript(dbName, scriptContent), Times.Once);
 
@@ -289,7 +314,7 @@ namespace DatabaseCreator.Tests
                         It.IsAny<DatabaseOperationException>(),
                         It.IsAny<Func<It.IsAnyType, Exception, string>>()),
                     Times.Once);
-                _databaseOperationRepositoryMock.Verify(repo => repo.AddCreatedDb(It.Is<List<DbInfo>>(list => list.Any(di => di.DbName == dbName && di.IsCreated))), Times.Once);
+                _databaseOperationRepositoryMock.Verify(repo => repo.LogCreatedDbInfo(It.Is<List<DbInfo>>(list => list.Any(di => di.DbName == dbName && di.IsCreated))), Times.Once);
             }
             finally
             {
@@ -316,13 +341,15 @@ namespace DatabaseCreator.Tests
                 var result = _databaseOperationService.Batch(dbNames, tempScriptPath);
 
                 Assert.NotNull(result);
-                Assert.Equal(dbNames.Count, result.Count);
-                dbNames.ForEach(dbName => Assert.Contains(dbName, result));
+            Assert.True(result.Success);
+                Assert.Equal(dbNames.Count, result.CreatedDatabaseNames.Count);
+                dbNames.ForEach(dbName => Assert.Contains(dbName, result.CreatedDatabaseNames));
+            Assert.Contains($"{dbNames.Count} created, 0 failed", result.SummaryMessage);
                 _databaseOperationRepositoryMock.Verify(repo => repo.CreateDbWithBatch(dbNames), Times.Once);
                 dbNames.ForEach(dbName =>
                     _databaseOperationRepositoryMock.Verify(repo => repo.ExecuteSqlScript(dbName, scriptContent), Times.Once)
                 );
-                _databaseOperationRepositoryMock.Verify(repo => repo.AddCreatedDb(It.Is<List<DbInfo>>(list => list.Count == dbNames.Count && list.All(di => di.IsCreated))), Times.Once);
+                _databaseOperationRepositoryMock.Verify(repo => repo.LogCreatedDbInfo(It.Is<List<DbInfo>>(list => list.Count == dbNames.Count && list.All(di => di.IsCreated))), Times.Once);
             }
             finally
             {
@@ -343,8 +370,10 @@ namespace DatabaseCreator.Tests
             var result = _databaseOperationService.Batch(dbNames, nonExistentScriptPath);
 
             Assert.NotNull(result);
-            Assert.Equal(dbNames.Count, result.Count);
-            dbNames.ForEach(dbName => Assert.Contains(dbName, result));
+            Assert.True(result.Success);
+            Assert.Equal(dbNames.Count, result.CreatedDatabaseNames.Count);
+            dbNames.ForEach(dbName => Assert.Contains(dbName, result.CreatedDatabaseNames));
+            Assert.Contains($"{dbNames.Count} created, 0 failed", result.SummaryMessage); // DBs created, script file error is separate
             _databaseOperationRepositoryMock.Verify(repo => repo.CreateDbWithBatch(dbNames), Times.Once);
             _databaseOperationRepositoryMock.Verify(repo => repo.ExecuteSqlScript(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
 
@@ -353,10 +382,10 @@ namespace DatabaseCreator.Tests
                     LogLevel.Error,
                     It.IsAny<EventId>(),
                     It.Is<It.IsAnyType>((v, t) => v.ToString().Contains("Error reading SQL script file")),
-                    It.IsAny<System.IO.FileNotFoundException>(),
+                    It.IsAny<System.IO.FileNotFoundException>(), // Specific exception
                     It.IsAny<Func<It.IsAnyType, Exception, string>>()),
                 Times.Once);
-            _databaseOperationRepositoryMock.Verify(repo => repo.AddCreatedDb(It.Is<List<DbInfo>>(list => list.Count == dbNames.Count && list.All(di => di.IsCreated))), Times.Once);
+            _databaseOperationRepositoryMock.Verify(repo => repo.LogCreatedDbInfo(It.Is<List<DbInfo>>(list => list.Count == dbNames.Count && list.All(di => di.IsCreated))), Times.Once);
         }
 
         [Fact]
@@ -379,8 +408,10 @@ namespace DatabaseCreator.Tests
                 var result = _databaseOperationService.Batch(dbNames, tempScriptPath);
 
                 Assert.NotNull(result);
-                Assert.Equal(dbNames.Count, result.Count);
-                dbNames.ForEach(dbName => Assert.Contains(dbName, result));
+            Assert.True(result.Success);
+                Assert.Equal(dbNames.Count, result.CreatedDatabaseNames.Count);
+                dbNames.ForEach(dbName => Assert.Contains(dbName, result.CreatedDatabaseNames));
+            Assert.Contains($"{dbNames.Count} created, 0 failed", result.SummaryMessage); // All DBs created, script error for one is separate
 
                 _databaseOperationRepositoryMock.Verify(repo => repo.CreateDbWithBatch(dbNames), Times.Once);
                 dbNames.ForEach(dbName =>
@@ -395,12 +426,57 @@ namespace DatabaseCreator.Tests
                         It.IsAny<DatabaseOperationException>(),
                         It.IsAny<Func<It.IsAnyType, Exception, string>>()),
                     Times.Once);
-                _databaseOperationRepositoryMock.Verify(repo => repo.AddCreatedDb(It.Is<List<DbInfo>>(list => list.Count == dbNames.Count && list.All(di => di.IsCreated))), Times.Once);
+                _databaseOperationRepositoryMock.Verify(repo => repo.LogCreatedDbInfo(It.Is<List<DbInfo>>(list => list.Count == dbNames.Count && list.All(di => di.IsCreated))), Times.Once);
             }
             finally
             {
                 DeleteTempFile(tempScriptPath);
             }
+        }
+
+        // --- Tests for SetDatabaseConnectionMethod ---
+
+        [Fact]
+        public void SetDatabaseConnectionMethod_ValidMethod_CallsRepository()
+        {
+            // Arrange
+            var methodName = "ado.net";
+            _databaseOperationRepositoryMock.Setup(repo => repo.SetConnectionMethod(methodName));
+
+            // Act
+            _databaseOperationService.SetDatabaseConnectionMethod(methodName);
+
+            // Assert
+            _databaseOperationRepositoryMock.Verify(repo => repo.SetConnectionMethod(methodName), Times.Once);
+        }
+
+        [Fact]
+        public void SetDatabaseConnectionMethod_RepositoryThrowsNotSupportedException_PropagatesException()
+        {
+            // Arrange
+            var methodName = "unsupported_method";
+            _databaseOperationRepositoryMock.Setup(repo => repo.SetConnectionMethod(methodName))
+                                           .Throws(new NotSupportedException($"Connection method '{methodName}' is not supported."));
+
+            // Act & Assert
+            var ex = Assert.Throws<NotSupportedException>(() => _databaseOperationService.SetDatabaseConnectionMethod(methodName));
+            Assert.Contains("not supported", ex.Message); // Check part of the exception message
+            _databaseOperationRepositoryMock.Verify(repo => repo.SetConnectionMethod(methodName), Times.Once);
+        }
+
+        [Fact]
+        public void SetDatabaseConnectionMethod_RepositoryThrowsOtherException_PropagatesException()
+        {
+            // Arrange
+            var methodName = "any_method";
+            var expectedException = new InvalidOperationException("Test repository exception");
+            _databaseOperationRepositoryMock.Setup(repo => repo.SetConnectionMethod(methodName))
+                                           .Throws(expectedException);
+
+            // Act & Assert
+            var actualException = Assert.Throws<InvalidOperationException>(() => _databaseOperationService.SetDatabaseConnectionMethod(methodName));
+            Assert.Same(expectedException, actualException); // Verify the same exception is propagated
+            _databaseOperationRepositoryMock.Verify(repo => repo.SetConnectionMethod(methodName), Times.Once);
         }
     }
 }
