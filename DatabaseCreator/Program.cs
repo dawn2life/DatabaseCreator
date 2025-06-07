@@ -5,7 +5,11 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Serilog;
+using Microsoft.EntityFrameworkCore;
+using DatabaseCreator.Data.EfCore;
+using System;
 
 // Configure Serilog static logger for early bootstrap logging if needed
 Log.Logger = new LoggerConfiguration()
@@ -43,6 +47,19 @@ try
         services.Configure<ConnectionStrings>(hostContext.Configuration.GetSection(nameof(ConnectionStrings)));
         services.AddSingleton<App>();
         services.AddAutoMapper(Register.GetAutoMapperProfiles());
+
+        services.AddDbContext<ApplicationDbContext>((serviceProvider, options) =>
+        {
+            var connectionStrings = serviceProvider.GetRequiredService<IOptions<ConnectionStrings>>().Value;
+            if (string.IsNullOrWhiteSpace(connectionStrings.MasterConnection))
+            {
+                throw new InvalidOperationException("MasterConnection string is not configured correctly in connectionstring.json.");
+            }
+            options.UseSqlServer(connectionStrings.MasterConnection, sqlServerOptionsAction: sqlOptions =>
+            {
+                // Example: sqlOptions.EnableRetryOnFailure();
+            });
+        });
     });
 
     Register.ConfigureServiceLayer(hostBuilder);

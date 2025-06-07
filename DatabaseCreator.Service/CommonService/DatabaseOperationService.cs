@@ -7,6 +7,7 @@ using DatabaseCreator.Domain.Exceptions;
 using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Protocols.WSIdentity;
 using System.Xml.Linq;
+using System.IO; // Added for File.ReadAllText
 
 namespace DatabaseCreator.Service.CommonService
 {
@@ -25,19 +26,38 @@ namespace DatabaseCreator.Service.CommonService
             _logger = logger;
         }
 
-        public List<string>? SingleExecution(List<string>? databaseNames, string? sqlScriptFilePath = null)
+        public void SetDatabaseConnectionMethod(string connectionMethodName)
+        {
+            _logger.LogInformation("Service attempting to set database connection method to: {ConnectionMethod}", connectionMethodName);
+            try
+            {
+                _databaseOperationRepository.SetConnectionMethod(connectionMethodName);
+                _logger.LogInformation("Service successfully set database connection method to: {ConnectionMethod}", connectionMethodName);
+            }
+            catch (NotSupportedException ex)
+            {
+                _logger.LogError(ex, "Service failed to set database connection method to {ConnectionMethod} as it's not supported.", connectionMethodName);
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "An unexpected error occurred in Service while setting database connection method to {ConnectionMethod}.", connectionMethodName);
+                throw;
+            }
+        }
+
+        public OperationResultDto? SingleExecution(List<string>? databaseNames, string? sqlScriptFilePath = null)
         {
             if (databaseNames == null)
             {
                 _logger.LogWarning("SingleExecution called with null databaseNames list.");
-                return null;
+                return new OperationResultDto { Success = false, SummaryMessage = "Input database names list was null." };
             }
             if (databaseNames.Count == 0)
             {
                 _logger.LogInformation("SingleExecution called with an empty databaseNames list.");
-                return new List<string>();
+                return new OperationResultDto { Success = true, SummaryMessage = "No databases requested for creation." }; // Success true as no work needed
             }
-            // ValidateInputParameters(databaseNames); // Already handled by count check for throwing exception
 
             List<DbInfodto> dbOperationResults = new List<DbInfodto>();
             string? scriptContent = null;
@@ -88,24 +108,30 @@ namespace DatabaseCreator.Service.CommonService
             }
 
             var mappedDbInfoForHistory = _mapper.Map<List<DbInfo>>(dbOperationResults);
-            _databaseOperationRepository.AddCreatedDb(mappedDbInfoForHistory);
+            _databaseOperationRepository.LogCreatedDbInfo(mappedDbInfoForHistory);
 
-            DisplayResult(dbOperationResults);
+            string summaryMessage = FormatOperationSummary(dbOperationResults);
+            var createdDbs = dbOperationResults.Where(x => x.IsCreated).Select(x => x.DbName).ToList();
 
-            return dbOperationResults.Where(x => x.IsCreated).Select(x => x.DbName).ToList();
+            return new OperationResultDto
+            {
+                CreatedDatabaseNames = createdDbs,
+                SummaryMessage = summaryMessage,
+                Success = createdDbs.Any() || !databaseNames.Any() // Success if any created OR if no dbs were requested
+            };
         }
 
-        public List<string>? Batch(List<string>? databaseNames, string? sqlScriptFilePath = null)
+        public OperationResultDto? Batch(List<string>? databaseNames, string? sqlScriptFilePath = null)
         {
             if (databaseNames == null)
             {
                 _logger.LogWarning("Batch operation called with null databaseNames list.");
-                return null;
+                return new OperationResultDto { Success = false, SummaryMessage = "Input database names list was null." };
             }
             if (databaseNames.Count == 0)
             {
                 _logger.LogInformation("Batch operation called with an empty databaseNames list.");
-                return new List<string>();
+                return new OperationResultDto { Success = true, SummaryMessage = "No databases requested for creation in batch." };
             }
             // ValidateInputParameters(databaseNames); // Already handled by count check for throwing exception
 
@@ -180,44 +206,30 @@ namespace DatabaseCreator.Service.CommonService
             }
 
             var mappedDbInfoForHistory = _mapper.Map<List<DbInfo>>(dbOperationResults);
-            _databaseOperationRepository.AddCreatedDb(mappedDbInfoForHistory);
+            _databaseOperationRepository.LogCreatedDbInfo(mappedDbInfoForHistory);
 
-            DisplayResult(dbOperationResults);
+            string summaryMessage = FormatOperationSummary(dbOperationResults);
+            var createdDbs = dbOperationResults.Where(x => x.IsCreated).Select(x => x.DbName).ToList();
 
-            return dbOperationResults.Where(x => x.IsCreated == true).Select(x => x.DbName).ToList();
+            return new OperationResultDto
+            {
+                CreatedDatabaseNames = createdDbs,
+                SummaryMessage = summaryMessage,
+                Success = createdDbs.Count == databaseNames.Count // For batch, success means all requested DBs were made
+            };
         }
 
         #region Private methods
-
-        /// <summary>
-        /// This method validates the input parameters for creating multiple databases.
-        /// It throws an exception if any of these conditions are not met.
-        /// </summary>
-        /// <param name="dbNames">The list of database names to be created.</param>
-        /// <exception cref="InvalidInputException">Thrown when the connection is not open or the list of database names is empty.</exception>
-        private void ValidateInputParameters(List<string>? dbNames)
-        {
-            if (dbNames?.Count == 0)
-            {
-                throw new InvalidInputException($"The {nameof(dbNames)} is empty.");
-            }
-        }
-
-        /// <summary>
-        /// This method displays the result of creating multiple databases to the console.
-        /// It displays a summary message showing how many databases were created and how many failed.
-        /// </summary>
-        /// <param name="createdDbNames">The list of database names that were created successfully.</param>
-        /// <param name="failedDbNames">The list of database names that failed to be created.</param>
-        private void DisplayResult(List<DbInfodto> dbs)
+        private string FormatOperationSummary(List<DbInfodto> dbs)
         {
             int createdDbCount = dbs.Count(x => x.IsCreated);
             int failedDbCount = dbs.Count - createdDbCount;
-            // Using logger for this information as well, though it's also console output.
-            // Depending on requirements, this might be Information or Debug level.
+            string summary = $"Summary: {createdDbCount} out of {dbs.Count} databases processed. {createdDbCount} created, {failedDbCount} failed.";
+
             _logger.LogInformation("Operation Summary: {CreatedCount} out of {TotalCount} databases processed successfully. {FailedCount} databases failed.",
                 createdDbCount, dbs.Count, failedDbCount);
-            Console.WriteLine($"\nSummary: {createdDbCount} out of {dbs.Count} databases were created successfully. {failedDbCount} databases failed to be created.");
+            // Console.WriteLine($"\nSummary: {createdDbCount} out of {dbs.Count} databases were created successfully. {failedDbCount} databases failed to be created.");
+            return summary;
         }
 
         #endregion

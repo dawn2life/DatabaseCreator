@@ -21,7 +21,7 @@ namespace DatabaseCreator.Domain.Repositories
         /// </summary>
         /// <param name="dbInfos"></param>
         /// <returns></returns>
-        void AddCreatedDb(List<DbInfo> dbInfos);
+        void LogCreatedDbInfo(List<DbInfo> dbInfos);
 
         /// <summary>
         /// Executes a given SQL script against the specified database.

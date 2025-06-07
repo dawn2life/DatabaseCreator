@@ -1,26 +1,26 @@
-﻿using AutoMapper;
+using DatabaseCreator.Data;
 using DatabaseCreator.Domain.Services;
 using DatabaseCreator.Service.CommonService;
+using DatabaseCreator.Service.Profiles;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
+using AutoMapper;
+using System.Collections.Generic;
 
 namespace DatabaseCreator.Service
 {
-    public class Register
+    public static class Register
     {
-        public static void ConfigureServiceLayer(IHostBuilder hostBuilder)
+        public static IServiceCollection ConfigureServiceLayer(this IServiceCollection services, IConfiguration configuration)
         {
-            hostBuilder.ConfigureServices((_, services) => 
-            {
-                services.AddTransient<IDatabaseOperationService, DatabaseOperationService>();
-                services.AddTransient<IUserInterfaceService, UserInterfaceService>();
-            });
-            Data.Register.ConfigureDataLayer(hostBuilder);
+            services.ConfigureDataLayer();
+            services.AddScoped<IDatabaseOperationService, DatabaseOperationService>();
+            services.AddScoped<IUserInterfaceService, UserInterfaceService>();
+            return services;
         }
-
-        public static Type[] GetAutoMapperProfiles()
+        public static List<Profile> GetAutoMapperProfiles()
         {
-            return typeof(Register).Assembly.GetTypes().Where(z => z.IsSubclassOf(typeof(Profile))).ToArray();
+            return new List<Profile> { new DataProfiles() };
         }
     }
 }
